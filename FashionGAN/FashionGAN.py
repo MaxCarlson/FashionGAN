@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import keras as K
 import tensorflow as tf
+from sklearn.utils import shuffle
 import matplotlib.pyplot as plt
 from keras import models, layers
 from sklearn.decomposition import PCA
@@ -64,12 +65,12 @@ x = layers.Dense(784)(x)
 genlayers.append(x)
 x = layers.LeakyReLU()(x)
 x = layers.BatchNormalization()(x)
-genout = layers.Reshape((28,28,1))(x)
+genout = layers.Reshape((28,28))(x)
 
 ganGen = K.Model(genin, genout)
 
 deslayers = []
-desin = K.Input(shape=(28,28,1))
+desin = K.Input(shape=(28,28))
 x = layers.Reshape((784,))(desin)
 x = layers.Dense(784)(x)
 deslayers.append(x)
@@ -88,25 +89,28 @@ deslayers.append(x)
 x = K.activations.sigmoid(x)
 desout = layers.BatchNormalization()(x)
 
-ganDescrim = K.Model(desin, desout)
+descriminator = K.Model(desin, desout)
 ganGen.summary()
-ganDescrim.summary()
+descriminator.summary()
 
-GAN = K.models.Sequential(layers=[ganGen, ganDescrim])
+GAN = K.models.Sequential(layers=[ganGen, descriminator])
 
 GAN.compile(optimizer=K.optimizers.Adam(learning_rate=0.001), 
         loss=K.losses.binary_crossentropy,
         metrics=[])
 
+descriminator.compile(optimizer=K.optimizers.Adam(learning_rate=0.001), 
+        loss=K.losses.binary_crossentropy,
+        metrics=[])
+ganGen.compile(optimizer=K.optimizers.Adam(learning_rate=0.001), 
+        loss=K.losses.binary_crossentropy,
+        metrics=[])
 
 epochs = 2
-batchSize = 32
-optim = K.optimizers.Adam()
-lossfn = K.losses.BinaryCrossentropy()
-
-#GAN.fit(d1, d2, batchSize, epochs)
+batchSize = 512
 
 trainData = tf.data.Dataset.from_tensor_slices((trainX, np.ones((trainX.shape[0], 1))))
+trainData = trainData.shuffle(buffer_size=1024).batch(batchSize)
 
 for e in range(epochs):
 
@@ -118,8 +122,25 @@ for e in range(epochs):
         # Generate images from the generator
         genImages = ganGen.predict(mvns)        
 
+        # Concat generated images with real  
+        # then while preserving shuffle while preserving ordering
+        tX = np.concatenate([np.reshape(X.numpy(), (batchSize,28,28)), genImages])
+        tY = np.concatenate([np.reshape(Y.numpy(), (batchSize)), np.zeros((batchSize))])
+        #tX, tY = shuffle(tX, tY, random_state=0)
+
+        # Train the descriminator
+        descriminator.trianable = True
+
+        trf = tf.data.Dataset.from_tensor_slices((tX, tY))
+        trf = trainData.shuffle(buffer_size=1024).batch(batchSize)
+
+        descriminator.fit(tX, tY, batch_size=batchSize)
+
+        # Train the generator
+        descriminator.trianable = False
+
+        mvns = np.random.rand(batchSize*2, generatorInputSize)
+        GAN.fit(x=mvns, y=np.ones(batchSize*2), batch_size=batchSize)
 
 
 
-
-        a=5
