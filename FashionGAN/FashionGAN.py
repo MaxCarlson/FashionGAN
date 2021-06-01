@@ -88,18 +88,22 @@ ganGen.summary()
 descriminator.summary()
 
 
-descriminator.compile(optimizer=K.optimizers.Adam(learning_rate=0.001), 
-        loss=K.losses.binary_crossentropy,
-        metrics=[])
 ganGen.compile(optimizer=K.optimizers.Adam(learning_rate=0.001), 
         loss=K.losses.binary_crossentropy,
         metrics=[])
 
+# Turn off the descriminator weights so it doesn't train when running the GAN
+descriminator.trainable = False
 GAN = K.models.Sequential(layers=[ganGen, descriminator])
-GAN.compile(optimizer=K.optimizers.Adam(learning_rate=0.001), 
+GAN.compile(optimizer=K.optimizers.Adam(learning_rate=0.01), 
         loss=K.losses.binary_crossentropy,
         metrics=[])
 
+# Turn them back on se we can train the descriminator
+descriminator.trainable = True
+descriminator.compile(optimizer=K.optimizers.Adam(learning_rate=0.00018), 
+        loss=K.losses.binary_crossentropy,
+        metrics=[])
 
 epochs = 100
 batchSize = 1024
@@ -126,37 +130,34 @@ def printPreds(ganGen, sz):
 for e in range(epochs):
 
     for b, (X, Y) in enumerate(trainData):
-        
-        tBatchSize = X.shape[0]
-        #mvns = mvn(tBatchSize)
-
         # Generate images from the generator
+        tBatchSize = X.shape[0]
         genImages = ganGen.predict(tf.random.normal((tBatchSize,generatorInputSize)))
         
         tX = tf.concat([X, genImages], axis=0)
         tY = tf.concat([Y,tf.zeros((tBatchSize, 1))], axis=0)
 
-        #genImages = ganGen.predict(mvns)     
-        # Concat generated images with real  
-        # then while preserving shuffle while preserving ordering
-        #tX = np.concatenate([np.reshape(X.numpy(), (tBatchSize,28,28)), genImages])
-        #tY = np.concatenate([np.reshape(Y.numpy(), (tBatchSize)), np.zeros((tBatchSize))])
-        #tX, tY = shuffle(tX, tY, random_state=0)
-
         # Train the descriminator
-        descriminator.trianable = True
-        #trf = tf.data.Dataset.from_tensor_slices((tX, tY))
-        #trf = trainData.shuffle(buffer_size=1024).batch(tBatchSize)
-        print('Training Descriminator')
+        #print('Training Descriminator')
+        #w, b = GAN.layers[1].layers[2].get_weights()
+        #print(w)
+
         descriminator.fit(tX, tY, batch_size=tBatchSize, shuffle=True)
 
+        #w, b = GAN.layers[1].layers[2].get_weights()
+        #print(w)
+
         # Train the generator
-        descriminator.trianable = False
-        
-        mvns = tf.random.normal((tBatchSize,generatorInputSize))
         print('Training Generator')
+        #print(GAN.layers[1].layers[2].trainable_weights)
+
+        mvns = tf.random.normal((tBatchSize,generatorInputSize))
         GAN.fit(x=mvns, y=tf.ones(len(mvns)), batch_size=tBatchSize, shuffle=True)
+
+        #w, b = GAN.layers[1].layers[2].get_weights()
+        #print(w)
+        a=5
 
 
     if e and e % 3 == 0:
-        printPreds(ganGen, 5)
+        printPreds(GAN.layers[0], 5)
