@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import keras as K
 import tensorflow as tf
+import statistics as st
 from sklearn.utils import shuffle
 import matplotlib.pyplot as plt
 from keras import models, layers
@@ -58,9 +59,6 @@ x = layers.BatchNormalization()(x)
 x = layers.Dense(512)(x)
 x = layers.LeakyReLU()(x)
 x = layers.BatchNormalization()(x)
-x = layers.Dense(648)(x)
-x = layers.LeakyReLU()(x)
-x = layers.BatchNormalization()(x)
 x = layers.Dense(784)(x)
 x = layers.LeakyReLU()(x)
 x = layers.BatchNormalization()(x)
@@ -91,71 +89,105 @@ ganGen.compile()
 # Turn off the descriminator weights so it doesn't train when running the GAN
 descriminator.trainable = False
 GAN = K.models.Sequential(layers=[ganGen, descriminator])
-GAN.compile(optimizer=K.optimizers.Adam(learning_rate=0.01), 
+GAN.compile(optimizer=K.optimizers.Adam(learning_rate=0.001, beta_1=0.5), 
         loss=K.losses.binary_crossentropy,
         metrics=['accuracy'])
 
 # Turn them back on se we can train the descriminator
 descriminator.trainable = True
-descriminator.compile(optimizer=K.optimizers.Adam(learning_rate=0.00018), 
+descriminator.compile(optimizer=K.optimizers.Adam(learning_rate=0.001, beta_1=0.5), 
         loss=K.losses.binary_crossentropy,
         metrics=['accuracy'])
 
-epochs = 100
-batchSize = 64
+epochs = 20
+batchSize = 8192
 
 dataType = tf.float32
 trainData = tf.data.Dataset.from_tensor_slices((tf.cast(trainX, dataType), 
                                                 tf.cast(np.ones((trainX.shape[0], 1)), dataType)))
-trainData = trainData.shuffle(buffer_size=1024).batch(batchSize)
+trainData = trainData.shuffle(buffer_size=1024).batch(batchSize//2)
 
 def mvn(size):
     #mvns = np.random.multivariate_normal(mean=np.zeros(100), cov=np.diag(np.ones(100)), 
     #                                     size=(batchSize, 1))
     return np.random.standard_normal((size, generatorInputSize))
 
-def printPreds(ganGen, sz):
+ppreds = []
+def printPreds(e, ganGen, sz):
     mvns = mvn(sz)
+    ppreds.append(ganGen.predict(mvns))
     fig, axs = plt.subplots(1, sz)
-    preds = ganGen.predict(mvns)
     for i in range(sz):
-        axs[i].imshow(np.reshape(preds[i], (28,28)), cmap='gray')
+        axs[i].imshow(np.reshape(ppreds[-1][i], (28,28)), cmap='gray')
+    plt.savefig(f'e_{e}.jpg')
+    if e != epochs:
+        return
+
+    fig, axs = plt.subplots(len(ppreds), sz)
+    for i in range(len(ppreds)):
+        for j in range(sz):
+            axs[i][j].imshow(np.reshape(ppreds[i][j], (28,28)), cmap='gray')
     plt.show()
 
-for e in range(epochs):
-
+dls = []
+gls = []
+for e in range(1, epochs+1):
+    edls = []
+    egls = []
+    print(f'Epoch {e}')
     for b, (X, Y) in enumerate(trainData):
         # Generate images from the generator
         tBatchSize = X.shape[0]
+        aBatchSize = tBatchSize * 2
         genImages = ganGen.predict(tf.random.normal((tBatchSize,generatorInputSize)))
         
-        idxs = tf.random.shuffle(tf.range(start=0, limit=tBatchSize*2))
+        #idxs = tf.random.shuffle(tf.range(start=0, limit=aBatchSize))
         tX = tf.concat([X, genImages], axis=0)
         tY = tf.concat([Y, tf.zeros((tBatchSize, 1))], axis=0)
-        tX, tY = tf.gather(tX, idxs), tf.gather(tY, idxs)
+        #tX, tY = tf.gather(tX, idxs), tf.gather(tY, idxs)
 
         # Train the descriminator
         #print('Training Descriminator')
         #w, b = GAN.layers[1].layers[2].get_weights()
         #print(w)
+        #ttx = tX.numpy()
+        #tty = tY.numpy()
 
-        descriminator.fit(tX, tY, batch_size=tBatchSize)
+        ld, da = descriminator.train_on_batch(tX, tY)
+        edls.append(ld)
 
         #w, b = GAN.layers[1].layers[2].get_weights()
         #print(w)
 
         # Train the generator
-        print('Training Generator')
         #print(GAN.layers[1].layers[2].trainable_weights)
 
-        mvns = tf.random.normal((tBatchSize,generatorInputSize))
-        p = GAN.predict(mvns)
-        GAN.fit(x=mvns, y=tf.ones((len(mvns),1)), batch_size=tBatchSize)
+        mvns = tf.random.normal((aBatchSize, generatorInputSize))
+        lg, ga  = GAN.train_on_batch(x=mvns, y=tf.ones((len(mvns),1)))
+        egls.append(lg)
+
+        if b % 5 == 0:
+            #p = GAN.predict(tf.random.normal((aBatchSize, generatorInputSize)))
+            #d = descriminator.predict(ganGen.predict(tf.random.normal((tBatchSize,generatorInputSize))))
+            #gacc = np.sum(p > 0.5) / aBatchSize
+            #dacc = np.sum(d < 0.5) / tBatchSize
+            #print(f'genLoss: {lg:.12f}, descLoss: {ld:.12f}, GAN acc:{gacc:.4f}, DescFake acc:{dacc:.4f}')
+            print(f'genLoss: {lg:.12f}, descLoss: {ld:.12f}, GAN acc:{ga:.4f}, DescFake acc:{da:.4f}')
 
         #w, b = GAN.layers[1].layers[2].get_weights()
         #print(w)
-        a=5
 
 
-    if e and e % 3 == 0:
-        printPreds(ganGen, 5)
+    if e and e % 10 == 0:
+        printPreds(e, ganGen, 5)
+    dls.append(st.mean(edls))
+    gls.append(st.mean(egls))
+
+
+fig, (ax1, ax2) = plt.subplots(1, 2)
+ax1.plot(range(epochs), dls)
+ax2.plot(range(epochs), gls)
+ax1.set_title('Descriminator Loss')
+ax2.set_title('GAN Loss')
+plt.show()
+
