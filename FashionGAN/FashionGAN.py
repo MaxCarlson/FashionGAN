@@ -47,41 +47,68 @@ testX, testY = load_mnist('data', kind='t10k')
 trainX = np.divide(trainX, 255)
 testX = np.divide(testX, 255)
 
-trainX = np.reshape(trainX, (trainX.shape[0], 28, 28))
-testX = np.reshape(testX, (testX.shape[0], 28, 28))
+#trainX = np.reshape(trainX, (trainX.shape[0], 28, 28))
+#testX = np.reshape(testX, (testX.shape[0], 28, 28))
 
 
 generatorInputSize = 100
+
+#genin = K.Input(shape=(generatorInputSize))
+#x = layers.Dense(256)(genin)
+#x = layers.LeakyReLU()(x)
+#x = layers.BatchNormalization()(x)
+#x = layers.Dense(512)(x)
+#x = layers.LeakyReLU()(x)
+#x = layers.BatchNormalization()(x)
+#x = layers.Dense(784)(x)
+#x = layers.LeakyReLU()(x)
+#x = layers.BatchNormalization()(x)
+#genout = layers.Reshape((28,28))(x)
+#
+#
+#desin = K.Input(shape=(28,28))
+#x = layers.Reshape((784,))(desin)
+#x = layers.Dense(784)(x)
+#x = layers.LeakyReLU()(x)
+#x = layers.BatchNormalization()(x)
+#x = layers.Dense(512)(x)
+#x = layers.LeakyReLU()(x)
+#x = layers.BatchNormalization()(x)
+#x = layers.Dense(256)(x)
+#x = layers.LeakyReLU()(x)
+#x = layers.BatchNormalization()(x)
+#desout = layers.Dense(1, activation=K.activations.sigmoid)(x)
+
 genin = K.Input(shape=(generatorInputSize))
-x = layers.Dense(256)(genin)
-x = layers.LeakyReLU()(x)
+x = layers.Dense(7*7*128)(genin)
 x = layers.BatchNormalization()(x)
-x = layers.Dense(512)(x)
 x = layers.LeakyReLU()(x)
+x = layers.Reshape((7,7,128))(x)
+x = layers.Conv2DTranspose(128, (5,5), strides=(1,1), padding='same')(x)
 x = layers.BatchNormalization()(x)
-x = layers.Dense(784)(x)
 x = layers.LeakyReLU()(x)
+x = layers.Conv2DTranspose(64, (5,5), strides=(2,2), padding='same')(x)
 x = layers.BatchNormalization()(x)
-genout = layers.Reshape((28,28))(x)
+x = layers.LeakyReLU()(x)
+x = layers.Conv2DTranspose(1, (5,5), strides=(2,2), padding='same', activation='tanh')(x)
+genout = layers.Reshape((28,28,1))(x)
+
+
+desin = K.Input((28,28,1))
+x = layers.Conv2D(64, (5,5), (2,2), padding='same')(desin)
+x = layers.BatchNormalization()(x)
+x = layers.LeakyReLU()(x)
+x = layers.Conv2D(128, (5,5), (2,2), padding='same')(x)
+x = layers.BatchNormalization()(x)
+x = layers.LeakyReLU()(x)
+x = layers.Flatten()(x)
+desout = layers.Dense(1, activation='sigmoid')(x)
+
 
 ganGen = K.Model(genin, genout)
-
-desin = K.Input(shape=(28,28))
-x = layers.Reshape((784,))(desin)
-x = layers.Dense(784)(x)
-x = layers.LeakyReLU()(x)
-x = layers.BatchNormalization()(x)
-x = layers.Dense(512)(x)
-x = layers.LeakyReLU()(x)
-x = layers.BatchNormalization()(x)
-x = layers.Dense(256)(x)
-x = layers.LeakyReLU()(x)
-x = layers.BatchNormalization()(x)
-desout = layers.Dense(1, activation=K.activations.sigmoid)(x)
-
 descriminator = K.Model(desin, desout)
-ganGen.summary()
 descriminator.summary()
+ganGen.summary()
 
 
 ganGen.compile()
@@ -93,7 +120,7 @@ GAN.compile(optimizer=K.optimizers.Adam(learning_rate=0.001, beta_1=0.5),
         loss=K.losses.binary_crossentropy,
         metrics=['accuracy'])
 
-# Turn them back on se we can train the descriminator
+# Turn them back on so we can train the descriminator
 descriminator.trainable = True
 descriminator.compile(optimizer=K.optimizers.Adam(learning_rate=0.001, beta_1=0.5), 
         loss=K.losses.binary_crossentropy,
@@ -113,13 +140,13 @@ def mvn(size):
     return np.random.standard_normal((size, generatorInputSize))
 
 ppreds = []
-def printPreds(e, ganGen, sz):
+def printPreds(e, ganGen, sz, name=''):
     mvns = mvn(sz)
     ppreds.append(ganGen.predict(mvns))
     fig, axs = plt.subplots(1, sz)
     for i in range(sz):
         axs[i].imshow(np.reshape(ppreds[-1][i], (28,28)), cmap='gray')
-    plt.savefig(f'e_{e}.jpg')
+    plt.savefig(f'{name}_e_{e}.jpg')
     plt.close()
     if e != epochs:
         return
@@ -155,7 +182,7 @@ for e in range(1, epochs+1):
             print(f'genLoss: {lg:.12f}, descLoss: {ld:.12f}, GAN acc:{ga:.4f}, DescFake acc:{da:.4f}')
 
     if e and e % 10 == 0:
-        printPreds(e, ganGen, 5)
+        printPreds(e, ganGen, 5, 'conv')
     dls.append(st.mean(edls))
     gls.append(st.mean(egls))
 
