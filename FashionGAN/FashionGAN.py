@@ -99,8 +99,8 @@ descriminator.compile(optimizer=K.optimizers.Adam(learning_rate=0.001, beta_1=0.
         loss=K.losses.binary_crossentropy,
         metrics=['accuracy'])
 
-epochs = 20
-batchSize = 8192
+epochs = 100
+batchSize = 1024
 
 dataType = tf.float32
 trainData = tf.data.Dataset.from_tensor_slices((tf.cast(trainX, dataType), 
@@ -120,6 +120,7 @@ def printPreds(e, ganGen, sz):
     for i in range(sz):
         axs[i].imshow(np.reshape(ppreds[-1][i], (28,28)), cmap='gray')
     plt.savefig(f'e_{e}.jpg')
+    plt.close()
     if e != epochs:
         return
 
@@ -141,42 +142,17 @@ for e in range(1, epochs+1):
         aBatchSize = tBatchSize * 2
         genImages = ganGen.predict(tf.random.normal((tBatchSize,generatorInputSize)))
         
-        #idxs = tf.random.shuffle(tf.range(start=0, limit=aBatchSize))
         tX = tf.concat([X, genImages], axis=0)
         tY = tf.concat([Y, tf.zeros((tBatchSize, 1))], axis=0)
-        #tX, tY = tf.gather(tX, idxs), tf.gather(tY, idxs)
-
-        # Train the descriminator
-        #print('Training Descriminator')
-        #w, b = GAN.layers[1].layers[2].get_weights()
-        #print(w)
-        #ttx = tX.numpy()
-        #tty = tY.numpy()
 
         ld, da = descriminator.train_on_batch(tX, tY)
         edls.append(ld)
-
-        #w, b = GAN.layers[1].layers[2].get_weights()
-        #print(w)
-
-        # Train the generator
-        #print(GAN.layers[1].layers[2].trainable_weights)
-
         mvns = tf.random.normal((aBatchSize, generatorInputSize))
         lg, ga  = GAN.train_on_batch(x=mvns, y=tf.ones((len(mvns),1)))
         egls.append(lg)
 
         if b % 5 == 0:
-            #p = GAN.predict(tf.random.normal((aBatchSize, generatorInputSize)))
-            #d = descriminator.predict(ganGen.predict(tf.random.normal((tBatchSize,generatorInputSize))))
-            #gacc = np.sum(p > 0.5) / aBatchSize
-            #dacc = np.sum(d < 0.5) / tBatchSize
-            #print(f'genLoss: {lg:.12f}, descLoss: {ld:.12f}, GAN acc:{gacc:.4f}, DescFake acc:{dacc:.4f}')
             print(f'genLoss: {lg:.12f}, descLoss: {ld:.12f}, GAN acc:{ga:.4f}, DescFake acc:{da:.4f}')
-
-        #w, b = GAN.layers[1].layers[2].get_weights()
-        #print(w)
-
 
     if e and e % 10 == 0:
         printPreds(e, ganGen, 5)
