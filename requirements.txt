@@ -1,0 +1,8 @@
+gzip
+keras
+matplotlib
+numpy
+pandas
+sklearn
+statistics
+tensorflow
